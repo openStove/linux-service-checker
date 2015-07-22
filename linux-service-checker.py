@@ -30,22 +30,22 @@ class service_checker:
                     setattr(self,i[0],i[1])
 
             else:
-                myprops={
-                                    "last_check":None,
-                                    "status":None,
-                                    "last_ok":None,
-                                    "alert_sent":None,
-                                    }
+                myprops={"name":s,
+                         "last_check":None,
+                         "status":None,
+                         "last_ok":None,
+                         "alert_sent":None,
+                         }
 
                 for i in config.items(s):
                     myprops[i[0]]=i[1]
 
-                self.services[s]=myprops
+                if myprops["prog"] not in self.progs:
+                    logger.debug("creation prog entry for %s" % myprops["prog"] )
+                    self.progs[myprops["prog"]]=[myprops]
+                else :
+                    self.progs[myprops["prog"]].append(myprops)
 
-                if self.progs[myprops["prog"]]== None :
-                    self.progs[myprops["prog"]]== {s:myprops}
-                else:
-                    self.progs[myprops["prog"]][s]=myprops
 
 
     def run(self,polling_interval):
@@ -64,35 +64,42 @@ class service_checker:
         process_list=psutil.process_iter()
         for i in process_list:
             process_name=i.name
-            #logger.debug(process_name)
             if process_name in self.progs: #process is in list
-                if i.cmdline in self.progs[i] or self.progs[]:
-                    props["last_check"]=check_tstamp
-                    self.all_ok(process_name,props)
+                for p in self.progs[process_name]:
+                    if p["cmdline"] in i.cmdline or p["cmdline"]=="None":
+                        logger.debug("found match in progs : %s" % p)
+                        p["last_check"]=check_tstamp
+                        self.all_ok(p)
 
-        for k,v in self.services.items():
-            if v["last_check"]!=check_tstamp: #service was no running
-                v["status"]="nok"
-                v["last_check"]=check_tstamp
-                self.alert(k,v)
+        self.process_unchecked(check_tstamp)
 
-    def alert(self,serviceName,props):
+    def process_unchecked(self,check_tstamp):
+        for p in self.progs:
+            logger.debug("myprog= %s" % p)
+            for v in self.progs[p]:
+                logger.debug("cmdline in list=%s" % v)
+                if v["last_check"]!=check_tstamp: #service was not running
+                    v["status"]="nok"
+                    v["last_check"]=check_tstamp
+                    self.alert(v)
+
+    def alert(self,props):
         if props["alert_sent"]== None:
-            logger.error( "Service %s:%s is NOT running --> Creating alert" % (serviceName,props["cmdline"]))
-            alert_result=self.send_alert("[NOK] service %s:%s is NOT running" % (serviceName,props["cmdline"]))
+            logger.error( "Service %s:%s is NOT running --> Creating alert" % (props["name"],props["cmdline"]))
+            alert_result=self.send_alert("service %s [NOK]" % (props["name"]))
             if alert_result==True:
                 props["alert_sent"]=datetime.datetime.now()
         else:
-            logger.error("Service %s:%s is NOT running, alert already fired" % (serviceName,props["cmdline"]))
+            logger.error("Service %s:%s is NOT running, alert already fired" % (props["name"],props["cmdline"]))
 
-    def all_ok(self,serviceName,props):
+    def all_ok(self,props):
         if props["alert_sent"]!=None: #there was an alert
-            logger.error("service %s:%s is again available --> send all_ok" % (serviceName,props["cmdline"]))
+            logger.error("service %s:%s is again available --> send all_ok" % (props["name"],props["cmdline"]))
             props["alert_sent"]=None
-            self.send_alert(self.alert_prefix +"service %s:%s is again available [ok]" % (serviceName,props["cmdline"]))
+            self.send_alert("service %s [OK] again available " % (props["name"]))
 
         else :
-            logger.info("Service %s:%s is running" % (serviceName,props["cmdline"]))
+            logger.info("Service %s:%s is running" % (props["name"],props["cmdline"]))
 
         props["status"]="ok"
         props["last_ok"]=props["last_check"]
@@ -101,7 +108,7 @@ class service_checker:
     def send_alert(self,txt):
         try:
             msg = MIMEText(txt.encode('utf-8'), 'plain', 'utf-8')
-            msg['Subject'] = txt
+            msg['Subject'] = self.alert_prefix +txt
             msg['From'] = self.alert_from
             msg['To'] = self.alert_to
 
