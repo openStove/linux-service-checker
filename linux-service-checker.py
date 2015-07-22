@@ -2,10 +2,9 @@
 import psutil
 from time import sleep
 import datetime
-import time
 import logging
 from logging.handlers import TimedRotatingFileHandler
-import os
+import sys
 import smtplib
 import ConfigParser
 from email.mime.text import MIMEText
@@ -18,33 +17,51 @@ class service_checker:
         self.progs={}
 
         self.getConfig()
+        self.run(int(self.polling_interval))
 
     def getConfig(self):
-        config = ConfigParser.ConfigParser()
-        config.read("config.cfg")
+        try:
+            config = ConfigParser.ConfigParser()
+            config.read(CONFIG_FILE)
 
-        for s in config.sections():
-            if s=="general":
-                for i in config.items(s):
-                    setattr(self,i[0],i[1])
+            for s in config.sections():
+                if s=="general":
+                    for i in config.items(s):
+                        setattr(self,i[0],i[1])
+                    self.set_logger()
+                else:
+                    myprops={"name":s,
+                             "last_check":None,
+                             "status":None,
+                             "last_ok":None,
+                             "alert_sent":None,
+                             }
 
-            else:
-                myprops={"name":s,
-                         "last_check":None,
-                         "status":None,
-                         "last_ok":None,
-                         "alert_sent":None,
-                         }
+                    for i in config.items(s):
+                        myprops[i[0]]=i[1]
 
-                for i in config.items(s):
-                    myprops[i[0]]=i[1]
+                    if myprops["prog"] not in self.progs:
+                        logger.debug("creation prog entry for %s" % myprops["prog"] )
+                        self.progs[myprops["prog"]]=[myprops]
+                    else :
+                        self.progs[myprops["prog"]].append(myprops)
+        except Exception:
+            print "could not load config %s" % CONFIG_FILE
+            logger.exception(Exception)
+            sys.exit(2)
 
-                if myprops["prog"] not in self.progs:
-                    logger.debug("creation prog entry for %s" % myprops["prog"] )
-                    self.progs[myprops["prog"]]=[myprops]
-                else :
-                    self.progs[myprops["prog"]].append(myprops)
 
+    def set_logger(self):
+        logger.setLevel(getattr(logging,self.log_level))
+        formater=logging.Formatter("%(asctime)s - %(levelname)7s - %(message)s")
+        rHandler=TimedRotatingFileHandler(self.log_file, when='d', interval=1, backupCount=7)
+        rHandler.setFormatter(formater)
+        logger.addHandler(rHandler)
+
+        if self.log_streamhandler in ["true","True","1"]:
+            sh=logging.StreamHandler()
+            sh.setFormatter(formater)
+            logger.addHandler(sh)
 
 
     def run(self,polling_interval):
@@ -66,10 +83,12 @@ class service_checker:
             logging.info("start checking services (not in paused time): %s time:%s" %(hours_paused,check_tstamp.hour))
             process_list=psutil.process_iter()
             for i in process_list:
-                process_name=i.name
+                process_name=i.name()
+                process_cmdline=i.cmdline()
+                logger.debug("process=%s \n cmdline=%s" % (process_name,process_cmdline))
                 if process_name in self.progs: #process is in list
                     for p in self.progs[process_name]:
-                        if p["cmdline"] in i.cmdline or p["cmdline"]=="None":
+                        if p["cmdline"] in process_cmdline or p["cmdline"]=="None":
                             logger.debug("found match in progs : %s" % p)
                             p["last_check"]=check_tstamp
                             self.all_ok(p)
@@ -132,15 +151,9 @@ class service_checker:
             return False
 
 if __name__ == '__main__':
-    LOGFILE=os.path.basename(__file__)+'.log'
+    if len(sys.argv)!=2:
+        print "specify config file as first argument sysarg=%s" % sys.argv
+        sys.exit(2)
+    CONFIG_FILE=sys.argv[1]
     logger = logging.getLogger('')
-    logger.setLevel(logging.DEBUG)
-    formater=logging.Formatter("%(asctime)s - %(levelname)7s - %(message)s")
-    rHandler=TimedRotatingFileHandler(LOGFILE, when='d', interval=1, backupCount=7)
-    rHandler.setFormatter(formater)
-    logger.addHandler(rHandler)
-
-    sh=logging.StreamHandler()
-    sh.setFormatter(formater)
-    logger.addHandler(sh)
-    service_checker().run(10)
+    service_checker()

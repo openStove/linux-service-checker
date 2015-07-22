@@ -1,4 +1,5 @@
 [general]
+polling_interval=10
 smtp_server= smtp.my.com:567
 smtp_login= user
 smtp_password= pass
@@ -6,6 +7,9 @@ alert_from= no_reply@email.com
 alert_to= support@email.com
 alert_prefix="My Application no more working : "
 alert_hour_paused=8,9
+log_level=INFO
+log_streamhandler=false
+log_file=/opt/log.log
 
 [nxd]
 prog=nxd
