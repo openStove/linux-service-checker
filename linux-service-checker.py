@@ -26,7 +26,6 @@ class service_checker:
         for s in config.sections():
             if s=="general":
                 for i in config.items(s):
-                    print i
                     setattr(self,i[0],i[1])
 
             else:
@@ -59,19 +58,23 @@ class service_checker:
 
 
     def check(self):
-        logger.info("start checking services")
         check_tstamp=datetime.datetime.now()
-        process_list=psutil.process_iter()
-        for i in process_list:
-            process_name=i.name
-            if process_name in self.progs: #process is in list
-                for p in self.progs[process_name]:
-                    if p["cmdline"] in i.cmdline or p["cmdline"]=="None":
-                        logger.debug("found match in progs : %s" % p)
-                        p["last_check"]=check_tstamp
-                        self.all_ok(p)
+        hours_paused= self.alert_hour_paused.split(',')
+        if str(check_tstamp.hour) in hours_paused:
+            logging.info("we are actual in paused time, nothing to do : %s time:%s" %(hours_paused,check_tstamp.hour))
+        else :
+            logging.info("start checking services (not in paused time): %s time:%s" %(hours_paused,check_tstamp.hour))
+            process_list=psutil.process_iter()
+            for i in process_list:
+                process_name=i.name
+                if process_name in self.progs: #process is in list
+                    for p in self.progs[process_name]:
+                        if p["cmdline"] in i.cmdline or p["cmdline"]=="None":
+                            logger.debug("found match in progs : %s" % p)
+                            p["last_check"]=check_tstamp
+                            self.all_ok(p)
 
-        self.process_unchecked(check_tstamp)
+            self.process_unchecked(check_tstamp)
 
     def process_unchecked(self,check_tstamp):
         for p in self.progs:
