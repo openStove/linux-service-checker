@@ -1,0 +1,18 @@
+[general]
+smtp_server= smtp.my.com:567
+smtp_login= user
+smtp_password= pass
+alert_from= no_reply@email.com
+alert_to= support@email.com
+alert_prefix="My Application no more working : "
+
+[nxd]
+prog=nxd
+cmdline=None
+
+[myApp]
+prog=java
+cmdline=tomcat
+tip=restart the tomcat server
+action=/etc/init.d/tomcat restart
+
